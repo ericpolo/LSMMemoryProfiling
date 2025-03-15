@@ -40,6 +40,10 @@ void configOptions(std::unique_ptr<DBEnv> &env, Options *options,
   options->max_bytes_for_level_base = env->GetMaxBytesForLevelBase();
   options->max_write_buffer_number = env->max_write_buffer_number;
 
+  options->prefix_length = env->prefix_length;
+  options->skiplist_height = env->skiplist_height;
+  options->skiplist_branching_factor = env->skiplist_branching_factor;
+
   options->bucket_count = env->bucket_count;
   options->linklist_huge_page_tlb_size = env->linklist_huge_page_tlb_size;
   options->linklist_bucket_entries_logging_threshold = env->linklist_bucket_entries_logging_threshold;

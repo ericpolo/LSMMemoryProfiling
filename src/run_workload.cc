@@ -227,6 +227,8 @@ int runWorkload(std::unique_ptr<DBEnv> &env) {
   (*buffer) << "RangeQuery Execution Time: " << rq_exec_time << std::endl;
 #endif // TIMER
 
+  // print global stat we collected
+  DB::PrintCurStat();
   // delete iterator and close db
   delete it;
   if (!s.ok())
