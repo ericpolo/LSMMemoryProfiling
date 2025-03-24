@@ -52,11 +52,25 @@ class FlushListner : public EventListener {
 public:
   explicit FlushListner(std::shared_ptr<Buffer> &buffer) {
     buffer_ = buffer;
+
   }
+  explicit FlushListner() {
+    buffer_ = nullptr;
+  }
+
+  inline auto GetFlushStartTime() {
+    return flush_start_time;
+  }
+  inline auto GetFlushEndTime() {
+    return flush_end_time;
+  }
+
   void OnFlushCompleted(DB* db, const FlushJobInfo& fji) override;
 
 private:
   std::shared_ptr<Buffer> buffer_;
+  std::chrono::steady_clock::time_point flush_start_time{};
+  std::chrono::steady_clock::time_point flush_end_time{};
 };
 
 #endif // EVENT_LISTNER_H_

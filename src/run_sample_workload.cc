@@ -79,7 +79,6 @@ std::vector<KVPair> GenerateRandomKVPair(int keyLength, int valueLength, int num
   return result;
 }
 
-/* ERICTODO: KV should already been generated before calling this method */
 PerformanceMatrix *TestVectorPerformance(std::vector<KVPair> &kvPairs, Options &options, std::unique_ptr<DBEnv> &env, ReadOptions &read_options,
   WriteOptions &write_options) {
   DB *db;
@@ -176,6 +175,147 @@ PerformanceMatrix *TestVectorPerformance(std::vector<KVPair> &kvPairs, Options &
   return perf;
 }
 
+PerformanceMatrix *TestSkipListPerformance(std::vector<KVPair> &kvPairs, Options &options, std::unique_ptr<DBEnv> &env, ReadOptions &read_options,
+  WriteOptions &write_options, bool isHashed = false) {
+  DB *db;
+  std::string dbPath = env->kDBPath;
+  std::string memTableType;
+  if (isHashed) {
+    dbPath += "_hashed_skiplist";
+    // make sure we have the vector memtable representation
+    options.memtable_factory.reset(
+      NewHashSkipListRepFactory(env->bucket_count, env->skiplist_height,
+                                env->skiplist_branching_factor));
+    options.prefix_extractor.reset(
+      NewFixedPrefixTransform(env->prefix_length));
+      memTableType = "HashSkipList";
+    if (env->prefix_length == 0) {
+      printf("Error: prefix_length is 0. Need to specify the prefix length before testing the performance for HashSkipList\n");
+      return nullptr;
+    }
+  } else {
+    dbPath += "_skiplist";
+    // make sure we have the vector memtable representation
+    options.memtable_factory.reset(new SkipListFactory);
+    memTableType = "SkipList";
+  }
+  PerformanceMatrix *perf = PerformanceMatrix::GetNewPerfMatrix();
+
+  // avoid switching to new memtable data structure since we are running the sample workload
+  options.enable_dynamic_index_organization = false;
+
+  // Create a flush listner to test flush time
+  std::shared_ptr<FlushListner> flush_listener = std::make_shared<FlushListner>();
+  options.listeners.emplace_back(flush_listener);
+
+  if (env->IsDestroyDatabaseEnabled()) {
+    DestroyDB(dbPath, options);
+    std::cout << "Destroying SkipList database ... done" << std::endl;
+  }
+
+  // Now open the vector table
+  Status s = DB::Open(options, dbPath, &db);
+  if (!s.ok())
+    std::cerr << s.ToString() << std::endl;
+  assert(s.ok());
+  Iterator *it = db->NewIterator(read_options);
+
+  // Test 1: test the average insert time here
+  // Remember to insert just the right amount of data to make the vector full.
+  auto start = std::chrono::high_resolution_clock::now();
+  std::string out;
+  int i = 0;
+  for (i = 0;i < kvPairs.size(); i++) {
+    KVPair kv = kvPairs[i];
+    // Check if we are about to exceed the memtable size limit here
+    db->GetProperty("rocksdb.cur-size-all-mem-tables", &out);
+    int curMemTableSize = std::stoi(out);
+    // we keep 10 kv pair size to make sure the check here is enough.
+    if (curMemTableSize + sizeof(kv) * 10 > env->GetBufferSize()) {
+      break;
+    }
+
+    s = db->Put(write_options, kv.key, kv.value);
+  }
+  auto stop = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+  perf->insertTime = ((double)duration.count() / (double)(i+1));
+  printf("%s: average insert time is %f\n", memTableType.c_str(), perf->insertTime);
+  // Record what records we have inserted here
+  std::vector<KVPair> insertedKV;
+  insertedKV.assign(kvPairs.begin(), kvPairs.begin() + i);
+
+  // Test 2: Test the average reading time (random)
+  // We test (insertedKV.size() / 10) reads here and get the average
+  start = std::chrono::high_resolution_clock::now();
+  int maxNumRead = insertedKV.size() / 10;
+  for (int i = 0; i < maxNumRead; i++) {
+    int index = rand() % insertedKV.size();
+    KVPair kv = insertedKV[index];
+    std::string value;
+
+    s = db->Get(read_options, kv.key, &value);
+  }
+  stop = std::chrono::high_resolution_clock::now();
+  duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+  perf->readTime = ((double)duration.count() / (double)maxNumRead);
+  printf("%s: average reading time is %f\n", memTableType.c_str(), perf->readTime);
+
+  // Test 3: Test the average range scan time
+  std::string start_key, end_key;
+  auto sortedKV = insertedKV;
+  std::sort(sortedKV.begin(), sortedKV.end(), KVPair::compare_);
+  start = std::chrono::high_resolution_clock::now();
+  for (int i = 0; i < 100; i++) {
+    int start_i = rand() % sortedKV.size();
+    int end_i = start_i + rand() %(sortedKV.size() - start_i);
+    start_key = sortedKV[start_i].key;
+    end_key = sortedKV[end_i].key;
+    it->Refresh();
+    assert(it->status().ok());
+    for (it->Seek(start_key); it->Valid(); it->Next()) {
+      if (it->key().ToString() >= end_key) {
+        break;
+      }
+    }
+  }
+  stop = std::chrono::high_resolution_clock::now();
+  duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+  perf->scanTime = ((double)duration.count() / (double)100);
+  printf("%s: average range search time is %f\n", memTableType.c_str(), perf->scanTime);
+
+  // Test 4: We need to test the SSTFlush time here
+  // Now Insert new keys until the flush starts
+  auto prevEnd = flush_listener->GetFlushEndTime();
+  duration = (std::chrono::nanoseconds)0;
+  int numFlush = 0;
+  for (int i = sortedKV.size(); i < kvPairs.size(); i++) {
+    auto curEnd = flush_listener->GetFlushEndTime();
+    if (curEnd == prevEnd) {
+      s = db->Put(write_options, kvPairs[i].key, kvPairs[i].value);
+    } else {
+      // flush happend, record it here
+      numFlush++;
+      duration += std::chrono::duration_cast<std::chrono::nanoseconds>(flush_listener->GetFlushEndTime() - flush_listener->GetFlushStartTime());
+      prevEnd = curEnd;
+      printf("%s: flush happend, current flush duration %lld\n", memTableType.c_str() ,duration.count());
+    }
+  }
+  if (numFlush == 0) {
+    printf("%s: NO flush happened, PLEASE increase the number of randomly sampled records\n", memTableType.c_str());
+    return perf;
+  }
+  perf->sstFlushTime = duration.count() / numFlush;
+  printf("%s: average sst flush time is %f\n", memTableType.c_str(), perf->sstFlushTime);
+
+  delete it;
+  s = db->Close();
+  if (!s.ok())
+    std::cerr << s.ToString() << std::endl;
+  assert(s.ok());
+
+  return perf;
+}
 
 int runSampleWorkload(std::unique_ptr<DBEnv> &env) {
   // Step 0: Parse options given by the environment
@@ -207,6 +347,16 @@ int runSampleWorkload(std::unique_ptr<DBEnv> &env) {
   PerformanceMatrix *vectorPerf = TestVectorPerformance(kvPairs, options, env, read_options, write_options);
   vectorPerf->PrintPerfMatrix("Vector");
 
+  // Step 3: Test the skiplist workload performance here using the sampled workload
+  PerformanceMatrix *skipListPerf = TestSkipListPerformance(kvPairs, options, env, read_options, write_options);
+  skipListPerf->PrintPerfMatrix("SkipList");
+
+  PerformanceMatrix *hashSkipListPerf = TestSkipListPerformance(kvPairs, options, env, read_options, write_options, true /* ishashed */);
+  skipListPerf->PrintPerfMatrix("HashSkipList");
+
+  // ERICTODO: NEED TEST SST TABLE SCAN TIME.
   delete vectorPerf;
+  delete skipListPerf;
+  delete hashSkipListPerf;
   return 0;
 }

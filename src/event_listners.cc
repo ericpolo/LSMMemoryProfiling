@@ -26,7 +26,14 @@ void WaitForCompactions(DB *db) {
 }
 
 void FlushListner::OnFlushCompleted(DB* db, const FlushJobInfo& fji) {
-  (*buffer_) << "buffer is full, flush finished info [num_entries]: " << fji.table_properties.num_entries;
-  (*buffer_) << "[Flush Stats] raw_key_size: " << fji.table_properties.raw_key_size
-            << ", raw_value_size: " << fji.table_properties.raw_value_size << std::endl;
+  if (buffer_ != nullptr) {
+    // we are running normal workload
+    (*buffer_) << "buffer is full, flush finished info [num_entries]: " << fji.table_properties.num_entries;
+    (*buffer_) << "[Flush Stats] raw_key_size: " << fji.table_properties.raw_key_size
+              << ", raw_value_size: " << fji.table_properties.raw_value_size << std::endl;
+  } else {
+    // we are running sample workload and testing the flush time.
+    flush_start_time = fji.flush_start_time;
+    flush_end_time = fji.flush_end_time;
+  }
 }
