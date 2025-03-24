@@ -1,3 +1,5 @@
+#ifndef CONFIG_OPTIONS_H
+#define CONFIG_OPTIONS_H
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/iostats_context.h>
 #include <rocksdb/options.h>
@@ -11,7 +13,7 @@
 #include "event_listners.h"
 #include "fluid_lsm.h"
 
-void configOptions(std::unique_ptr<DBEnv> &env, Options *options,
+inline void configOptions(std::unique_ptr<DBEnv> &env, Options *options,
                    BlockBasedTableOptions *table_options,
                    WriteOptions *write_options, ReadOptions *read_options,
                    FlushOptions *flush_options) {
@@ -362,3 +364,5 @@ void configOptions(std::unique_ptr<DBEnv> &env, Options *options,
   options->listeners.emplace_back(tree);
 #endif // DOSTO
 }
+
+#endif // CONFIG_OPTIONS_H

@@ -108,6 +108,29 @@ int parse_arguments(int argc, char *argv[], std::unique_ptr<DBEnv> &env) {
       "def: 0]",
       {'A', "preallocation_size"});
 
+  args::ValueFlag<int> run_sample_workload_cmd(
+    group1, "run_sample_workload",
+    "[Run 848 Project sample workload or not: 0 for No, 1 for Yes]",
+    {'s', "sample_workload"});
+
+  args::ValueFlag<int> kv_entry_size_cmd(
+    group1, "kv_entry_size",
+    "[Entry size in bytes;"
+    "def: 8]",
+    {'e', "kv_entry_size"});
+
+  args::ValueFlag<float> key_value_size_ratio_cmd(
+    group1, "key_value_size_ratio",
+    "[Ratio of key size for each entry;"
+    "def: 0.5]",
+    {'r', "key_value_size_ratio"});
+
+  args::ValueFlag<int> num_kv_entries_cmd(
+    group1, "num_kv_entries",
+    "[Number of kv entries will be generated in the sample workload;"
+    "def: 20000]",
+    {'n', "num_kv_entries"});
+
   try {
     parser.ParseCLI(argc, argv);
   } catch (args::Help &) {
@@ -177,6 +200,13 @@ int parse_arguments(int argc, char *argv[], std::unique_ptr<DBEnv> &env) {
   env->vector_preallocation_size_in_bytes =
       vector_pre_allocation_size_cmd ? args::get(vector_pre_allocation_size_cmd)
                                      : env->vector_preallocation_size_in_bytes;
+
+  if (run_sample_workload_cmd) {
+    env->run_sample_workload = args::get(run_sample_workload_cmd) == 0? false:true;
+  }
+  env->kv_entry_size = kv_entry_size_cmd? args::get(kv_entry_size_cmd):env->kv_entry_size;
+  env->key_value_size_ratio = key_value_size_ratio_cmd? args::get(key_value_size_ratio_cmd):env->key_value_size_ratio;
+  env->num_kv_entries = num_kv_entries_cmd? args::get(num_kv_entries_cmd): env->num_kv_entries;
 
   return 0;
 }

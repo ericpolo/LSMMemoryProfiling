@@ -89,6 +89,11 @@ public:
     return GetTargetFileSizeBase() * size_ratio;
   }
 
+  bool run_sample_workload = true;
+  int kv_entry_size = 8;
+  float key_value_size_ratio = 0.5;
+  int num_kv_entries = 20000;
+
 #pragma region[DBOptions]
   bool create_if_missing = true;
   bool clear_system_cache = true;

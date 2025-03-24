@@ -7,6 +7,7 @@
 #include <db_env.h>
 #include <parse_arguments.h>
 #include <run_workload.h>
+#include <sample_workload.h>
 
 int main(int argc, char *argv[]) {
   std::unique_ptr<DBEnv> env = DBEnv::GetInstance();
@@ -16,5 +17,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  return runWorkload(env);
+  if (env->run_sample_workload) {
+    printf("Running CS848 Sample Workload....\n");
+    return runSampleWorkload(env);
+  } else {
+    printf("Running Workload....\n");
+    return runWorkload(env);
+  }
 }

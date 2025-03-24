@@ -39,6 +39,7 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/fluid_lsm.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/run_workload.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/run_sample_workload.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/working_version.cc 
 )
 
