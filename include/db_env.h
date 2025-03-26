@@ -25,8 +25,8 @@ const size_t MAX_MULTI_TRIVIAL_MOVE = 4;
 const int MAX_OPEN_FILES = 50;
 const int MAX_FILE_OPENING_THREADS = 80;
 
-// const long VECTOR_PREALLOCATION_SIZE_IN_BYTES = 16777216;  // [16MB]
-const long VECTOR_PREALLOCATION_SIZE_IN_BYTES = ENTRY_SIZE * ENTRIES_PER_PAGE * BUFFER_SIZE_IN_PAGES;
+const long VECTOR_PREALLOCATION_SIZE_IN_BYTES = 16777216;  // [16MB]
+// const long VECTOR_PREALLOCATION_SIZE_IN_BYTES = ENTRY_SIZE * ENTRIES_PER_PAGE * BUFFER_SIZE_IN_PAGES;
 
 } // namespace Default
 
@@ -89,10 +89,11 @@ public:
     return GetTargetFileSizeBase() * size_ratio;
   }
 
-  bool run_sample_workload = true;
+  bool run_sample_workload = false;
   int kv_entry_size = 8;
   float key_value_size_ratio = 0.5;
   int num_kv_entries = 20000;
+  float range_query_selectivity = 0.1;
 
 #pragma region[DBOptions]
   bool create_if_missing = true;
@@ -326,7 +327,7 @@ public:
 
 #pragma region[WriteOptions]
   // if true, this write request is of lower priority if compaction is behind
-  bool low_pri = true;
+  bool low_pri = false;
 
   // if true, the write will be flushed from the operating system buffer cache
   // before the write is considered complete. If true, write will be slower.

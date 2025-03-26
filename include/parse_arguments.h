@@ -80,7 +80,7 @@ int parse_arguments(int argc, char *argv[], std::unique_ptr<DBEnv> &env) {
       "The number of unique range queries to issue in the experiment [def: 0]",
       {'S', "range_queries"});
   args::ValueFlag<float> range_query_selectivity_cmd(
-      group1, "Y", "Range query selectivity [def: 0]",
+      group1, "Y", "Range query selectivity [def: 0.1]",
       {'Y', "range_query_selectivity"});
 
   args::ValueFlag<int> memtable_factory_cmd(
@@ -110,7 +110,8 @@ int parse_arguments(int argc, char *argv[], std::unique_ptr<DBEnv> &env) {
 
   args::ValueFlag<int> run_sample_workload_cmd(
     group1, "run_sample_workload",
-    "[Run 848 Project sample workload or not: 0 for No, 1 for Yes]",
+    "[Run 848 Project sample workload or not: 0 for No, 1 for Yes; "
+    "def: 0]",
     {'s', "sample_workload"});
 
   args::ValueFlag<int> kv_entry_size_cmd(
@@ -207,6 +208,7 @@ int parse_arguments(int argc, char *argv[], std::unique_ptr<DBEnv> &env) {
   env->kv_entry_size = kv_entry_size_cmd? args::get(kv_entry_size_cmd):env->kv_entry_size;
   env->key_value_size_ratio = key_value_size_ratio_cmd? args::get(key_value_size_ratio_cmd):env->key_value_size_ratio;
   env->num_kv_entries = num_kv_entries_cmd? args::get(num_kv_entries_cmd): env->num_kv_entries;
+  env->range_query_selectivity = range_query_selectivity_cmd? args::get(range_query_selectivity_cmd): env->range_query_selectivity;
 
   return 0;
 }

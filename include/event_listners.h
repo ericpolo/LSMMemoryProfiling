@@ -52,25 +52,34 @@ class FlushListner : public EventListener {
 public:
   explicit FlushListner(std::shared_ptr<Buffer> &buffer) {
     buffer_ = buffer;
-
   }
   explicit FlushListner() {
     buffer_ = nullptr;
   }
 
-  inline auto GetFlushStartTime() {
-    return flush_start_time;
+  inline auto GetNumFlush() {
+    assert(job_end_time.size() == job_end_time.size());
+    return job_start_time.size();
   }
-  inline auto GetFlushEndTime() {
-    return flush_end_time;
+  inline auto GetFlushDurations() {
+    std::vector<int64_t> durations;
+    for (auto it: job_start_time) {
+      if (job_end_time.find(it.first) != job_end_time.end()) {
+        auto curDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(job_end_time[it.first] - it.second);
+        durations.push_back(curDuration.count());
+      }
+    }
+    return durations;
   }
 
   void OnFlushCompleted(DB* db, const FlushJobInfo& fji) override;
 
+  void OnFlushBegin(DB* db, const FlushJobInfo& fji) override;
+
 private:
   std::shared_ptr<Buffer> buffer_;
-  std::chrono::steady_clock::time_point flush_start_time{};
-  std::chrono::steady_clock::time_point flush_end_time{};
+  std::unordered_map<int, std::chrono::steady_clock::time_point> job_start_time;
+  std::unordered_map<int, std::chrono::steady_clock::time_point> job_end_time;
 };
 
 #endif // EVENT_LISTNER_H_

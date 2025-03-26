@@ -33,7 +33,18 @@ void FlushListner::OnFlushCompleted(DB* db, const FlushJobInfo& fji) {
               << ", raw_value_size: " << fji.table_properties.raw_value_size << std::endl;
   } else {
     // we are running sample workload and testing the flush time.
-    flush_start_time = fji.flush_start_time;
-    flush_end_time = fji.flush_end_time;
+    if (job_start_time.find(fji.job_id) != job_start_time.end()) {
+      job_end_time[fji.job_id] = std::chrono::high_resolution_clock::now();
+    }
+  }
+}
+
+
+void FlushListner::OnFlushBegin(DB* db, const FlushJobInfo& fji) {
+  if (buffer_ == nullptr) {
+    // we are running sample workload and testing the flush time.
+    if (job_start_time.find(fji.job_id) == job_start_time.end()) {
+      job_start_time[fji.job_id] = std::chrono::high_resolution_clock::now();
+    }
   }
 }
