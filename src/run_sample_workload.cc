@@ -10,7 +10,8 @@
 #include "config_options.h"
 #include "utils.h"
 
-std::string sample_buffer_file = "./sample_workload.stat";
+std::string sample_buffer_file = std::getenv("SAMPLE_WORKLOAD_STAT_PATH");
+const int MAX_RESERVED_ENTRY_COUNT = 10;
 
 struct KVPair {
   std::string key;
@@ -30,6 +31,8 @@ struct PerformanceMatrix {
   double sstReadTime;   // Only needed by SkipList and HashSkipList: average Point read time per unit in sst files
   double sstScanTime;   // Only needed by SkipList and HashSkipList: average Range scan time per unit in sst files
 
+  double numEntriesRatioToVec; // ratio of number of entries current data structure can hold when the memtable is full/scheduled
+                               // for flush compared to Vector since Vector has the lowest memory overhead
 
   static PerformanceMatrix *GetNewPerfMatrix() {
     PerformanceMatrix *matrix = (PerformanceMatrix *)malloc(sizeof(PerformanceMatrix));
@@ -44,15 +47,16 @@ struct PerformanceMatrix {
   }
 
   void PrintPerfMatrix(const char *type) {
-    printf("Data Structure Type: %s\n"
-           "InsertTime:  %f\n"
-           "SortingTime: %f\n"
-           "ReadTime:    %f\n"
-           "ScanTime:    %f\n"
-           "sstFlushTime:%f\n"
-           "sstReadTime: %f\n"
-           "sstScanTime: %f\n", type,
-          insertTime, sortingTime, readTime, scanTime, sstFlushTime, sstReadTime, sstScanTime);
+    printf("Data Structure Type:  %s\n"
+           "InsertTime:           %f\n"
+           "SortingTime:          %f\n"
+           "ReadTime:             %f\n"
+           "ScanTime:             %f\n"
+           "sstFlushTime:         %f\n"
+           "sstReadTime:          %f\n"
+           "sstScanTime:          %f\n"
+           "numEntriesRatioToVec: %f\n", type,
+          insertTime, sortingTime, readTime, scanTime, sstFlushTime, sstReadTime, sstScanTime, numEntriesRatioToVec);
   }
 
   void FlushToBuffer(std::shared_ptr<Buffer> buffer) {
@@ -62,7 +66,8 @@ struct PerformanceMatrix {
               << scanTime << std::endl
               << sstFlushTime << std::endl
               << sstReadTime << std::endl
-              << sstScanTime << std::endl;
+              << sstScanTime << std::endl
+              << numEntriesRatioToVec << std::endl;
   }
 };
 
@@ -93,7 +98,7 @@ std::vector<KVPair> GenerateRandomKVPair(int keyLength, int valueLength, int num
 }
 
 PerformanceMatrix *TestVectorPerformance(std::vector<KVPair> &kvPairs, Options &options, std::unique_ptr<DBEnv> &env, ReadOptions &read_options,
-  WriteOptions &write_options) {
+  WriteOptions &write_options, int &numEntries) {
   DB *db;
   std::string vectorDBPath = env->kDBPath + "_vector";
   PerformanceMatrix *perf = PerformanceMatrix::GetNewPerfMatrix();
@@ -118,7 +123,7 @@ PerformanceMatrix *TestVectorPerformance(std::vector<KVPair> &kvPairs, Options &
   // Remember to insert just the right amount of data to make the memtable full.
   unsigned long insertTimeTotal = 0;
   int i = 0;
-  int reservedSpace = sizeof(KVPair) * 10;
+  size_t reservedSpace = sizeof(KVPair) * MAX_RESERVED_ENTRY_COUNT;
   for (i = 0;i < kvPairs.size(); i++) {
     KVPair kv = kvPairs[i];
     // Check if we the memtable is about to be scheduled to flush before current insert
@@ -137,6 +142,11 @@ PerformanceMatrix *TestVectorPerformance(std::vector<KVPair> &kvPairs, Options &
   // Record what records we have inserted here
   std::vector<KVPair> insertedKV;
   insertedKV.assign(kvPairs.begin(), kvPairs.begin() + i);
+
+  // Record number of entries we can hold in a full Vector for future reference
+  numEntries = i + MAX_RESERVED_ENTRY_COUNT;
+  perf->numEntriesRatioToVec = 1;
+  printf("Vector: Number Entries a full vector can hold is around %d\n", numEntries);
 
   // Test 2: Test the average sorting time (including copy)
   auto start = std::chrono::high_resolution_clock::now();
@@ -186,7 +196,7 @@ PerformanceMatrix *TestVectorPerformance(std::vector<KVPair> &kvPairs, Options &
 }
 
 PerformanceMatrix *TestSkipListPerformance(std::vector<KVPair> &kvPairs, Options &options, std::unique_ptr<DBEnv> &env, ReadOptions &read_options,
-  WriteOptions &write_options, bool isHashed = false) {
+  WriteOptions &write_options, const int numEntriesVec, bool isHashed = false) {
   DB *db;
   std::string dbPath = env->kDBPath;
   std::string memTableType;
@@ -234,7 +244,7 @@ PerformanceMatrix *TestSkipListPerformance(std::vector<KVPair> &kvPairs, Options
   // Remember to insert just the right amount of data to make the vector full.
   unsigned long insertTimeTotal = 0;
   int i = 0;
-  int reservedSpace = sizeof(KVPair) * 10;
+  size_t reservedSpace = sizeof(KVPair) * MAX_RESERVED_ENTRY_COUNT;
   for (i = 0;i < kvPairs.size(); i++) {
     KVPair kv = kvPairs[i];
     // Check if we the memtable is about to be scheduled to flush before current insert
@@ -253,6 +263,11 @@ PerformanceMatrix *TestSkipListPerformance(std::vector<KVPair> &kvPairs, Options
   // Record what records we have inserted here
   std::vector<KVPair> insertedKV;
   insertedKV.assign(kvPairs.begin(), kvPairs.begin() + i);
+
+  // Record the ratio of num entreis the current data structure can hold at most compared to Vector
+  int numEntries = i + MAX_RESERVED_ENTRY_COUNT;
+  perf->numEntriesRatioToVec = (double)((double)(numEntries) / double(numEntriesVec));
+  printf("%s: Number Entries at most can hold is around %d, ratio to vector %f\n", memTableType.c_str(), numEntries, perf->numEntriesRatioToVec);
 
   // Test 2: Test the average reading time (random)
   // We test (insertedKV.size() / 10) reads here and get the average
@@ -313,7 +328,7 @@ PerformanceMatrix *TestSkipListPerformance(std::vector<KVPair> &kvPairs, Options
     i++;
   }
   perf->sstFlushTime = totalDuration / numFlush;
-  printf("%s: average sst flush time is %f\n", memTableType.c_str(), perf->sstFlushTime);
+  printf("%s: average SST flush time is %f\n", memTableType.c_str(), perf->sstFlushTime);
 
   // Test 5: Test the SST Point Query Time WITHIN 1 SST file
   //    We know for sure that any KV Pair in insertedKV must be flushed to disk.
@@ -328,7 +343,6 @@ PerformanceMatrix *TestSkipListPerformance(std::vector<KVPair> &kvPairs, Options
   duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
   perf->sstReadTime = ((double)duration.count() / (double)maxReadCount);
   printf("%s: average SST point scan time is %f\n", memTableType.c_str(), perf->sstReadTime);
-
 
   // Test 6: Test the SST Range Query Time
   auto sortedKV = kvPairs;
@@ -392,23 +406,24 @@ int runSampleWorkload(std::unique_ptr<DBEnv> &env) {
   std::vector<KVPair> kvPairs = GenerateRandomKVPair(keyLength, valueLength, env->num_kv_entries);
 
   // Step 2: Now, test the vector workload performance here using the sampled workload
-  PerformanceMatrix *vectorPerf = TestVectorPerformance(kvPairs, options, env, read_options, write_options);
+  int numEntries = 0;
+  PerformanceMatrix *vectorPerf = TestVectorPerformance(kvPairs, options, env, read_options, write_options, numEntries);
   // vectorPerf->PrintPerfMatrix("Vector");
 
   // Step 3: Test the skiplist workload performance here using the sampled workload
-  PerformanceMatrix *skipListPerf = TestSkipListPerformance(kvPairs, options, env, read_options, write_options);
+  PerformanceMatrix *skipListPerf = TestSkipListPerformance(kvPairs, options, env, read_options, write_options, numEntries);
   // skipListPerf->PrintPerfMatrix("SkipList");
 
   // Step 3: Test the hashskiplist workload performance here using the sampled workload
-  PerformanceMatrix *hashSkipListPerf = TestSkipListPerformance(kvPairs, options, env, read_options, write_options, true /* ishashed */);
+  PerformanceMatrix *hashSkipListPerf = TestSkipListPerformance(kvPairs, options, env, read_options, write_options, numEntries, true /* ishashed */);
   // hashSkipListPerf->PrintPerfMatrix("HashSkipList");
 
-  vectorPerf->FlushToBuffer(buffer);
   skipListPerf->FlushToBuffer(buffer);
+  vectorPerf->FlushToBuffer(buffer);
   hashSkipListPerf->FlushToBuffer(buffer);
   buffer->flush();
 
-  // ERICTODO: NEED TEST SST TABLE SCAN TIME.
+  printf("Statistics of the random sample workload is flushed to file: %s\n", sample_buffer_file.c_str());
   delete vectorPerf;
   delete skipListPerf;
   delete hashSkipListPerf;
