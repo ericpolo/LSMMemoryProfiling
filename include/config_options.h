@@ -42,6 +42,7 @@ inline void configOptions(std::unique_ptr<DBEnv> &env, Options *options,
   options->max_bytes_for_level_base = env->GetMaxBytesForLevelBase();
   options->max_write_buffer_number = env->max_write_buffer_number;
 
+  options->vector_preallocation_size_in_bytes = env->vector_preallocation_size_in_bytes;
   options->prefix_length = env->prefix_length;
   options->skiplist_height = env->skiplist_height;
   options->skiplist_branching_factor = env->skiplist_branching_factor;
