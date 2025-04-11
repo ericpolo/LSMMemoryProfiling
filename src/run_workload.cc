@@ -22,6 +22,7 @@ int runWorkload(std::unique_ptr<DBEnv> &env) {
 
   configOptions(env, &options, &table_options, &write_options, &read_options,
                 &flush_options);
+  options.enable_dynamic_index_organization = false;
 
   std::shared_ptr<Buffer> buffer = std::make_unique<Buffer>(buffer_file);
   std::unique_ptr<Buffer> stats = std::make_unique<Buffer>(stats_file);
