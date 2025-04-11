@@ -1,13 +1,11 @@
-# Anatomy of the LSM Memory Buffer: Insights & Implications
+# Anatomy of the LSM Memory Buffer: CS848 Project Version
 
-This repository contains benchmarking for different write buffer implementations in LSM-based systems. We use RocksDB source as base to profile four type of write buffers (i) _skip-list_, (ii) _vector_ (iii) _hash skip-list_ (iv) _hash linked-list_. All four implemenations are already implemented in RocksDB.
-
-We also use a `KV-WorkloadGenerator` as a submodule for generating different type of workloads with different compositions (inserts, updates, point queries and range queries etc).
+This repository is forked from the original LSMMemoryProfiling repository developed by the SSD lab in Brandeis University (repo link: https://github.com/SSD-Brandeis/LSMMemoryProfiling). For the CS848 Project, I added a random sampled benchmark based on their benchmark framework. Please follow the steps below to compile the benchmark and check section [Run the Sampled Benchmark](#run-the-sampled-benchmark) to run the sample mini-benchmark developed for the CS848 Project.
 
 ## Pre-requisites
 The step 1 is to clone this respository in your local machine. You can do this by running the following command:
 ```bash
-git clone https://github.com/SSD-Brandeis/LSMMemoryProfiling
+git clone https://github.com/ericpolo/LSMMemoryProfiling
 ```
 
 You might also need `cmake` and `make`. Other than this you may need to install `libgflags-dev` for RocksDB. You can install this by running the following command:
@@ -30,7 +28,8 @@ The above command will do the following:
 3. Build the `KV-WorkloadGenerator` source code.
 4. Build the `working_version` source code. (This you can find in `./MemoryProfiling/examples/__working_branch` directory)
 
-## Running the benchmarks
+Binaries will be installed in the `./bin` folder.
+## Running the benchmarks (Original)
 
 ### Step 1: Generating the workload
 To run any benchmark, you have to first generate the workload. You can do this by going to the `KV-WorkloadGenerator` directory and running the following command:
@@ -48,7 +47,7 @@ To run any benchmark, you have to first generate the workload. You can do this b
 **Note**: The above command will generate a `workload.txt` file in the same directory.
 
 ### Step 2: Running the benchmark
-After generating the workload, you may want to copy paste the `workload.txt` to the `./MemoryProfiling/examples/__working_branch` directory.
+After generating the workload, you may want to copy and paste the `workload.txt` to the `./MemoryProfiling/examples/__working_branch` directory.
 
 Great! Now you can run the benchmark by running the following command:
 ```bash
@@ -68,7 +67,7 @@ After running the benchmark, you can find the results in the `./MemoryProfiling/
 
 
 ---
-> The `working_verion` takes few arguments as input. Here is the list of arguments:
+> The `working_verion` takes a few arguments as input. Here is the list of arguments:
 ```bash
 RocksDB_parser.
 
@@ -144,3 +143,75 @@ RocksDB_parser.
                                           [Preallocation Vector Size: Size to
                                           preallocation to vector memtable; def:
                                           0]
+```
+
+
+## Run the Sampled Benchmark
+The sampled benchmark is developed for the CS848 Project to collect basic operation costs of different data structures. It is developed based on the available benchmark framework and shares the same compilation process and executable. It does not require pre-generating the workload, but it generates random KV pairs on the fly. It currently supports three data structures: Vector, SkipList, and HashSkipList. To run the random-sampled mini-benchmark, simply go to the bin folder and run the following command with newly added options:
+```bash
+# run the sampled benchmark with
+#     Entry size 116
+#     Ratio of key size for each entry 0.14     <- key size 16, data size 100
+#     Hash prefix length 6
+#     Max number of random KV pairs 20000
+#     The size ratio for the LSM 4
+#     Max in-memory component memory usage 67108864 = 64 MB
+./working_version -s 1 -e 116 -r 0.14 -X 6 -n 200000 --size_ratio=4 -M 67108864
+
+# New options added to support sampled benchmark:
+New options:
+        -s[run_sample_workload],
+        --sample_workload=[run_sample_workload]
+                                          [Run 848 Project sample workload or
+                                          not: 0 for No, 1 for Yes; def: 0]
+        -e[kv_entry_size],
+        --kv_entry_size=[kv_entry_size]   [Entry size in bytes;def: 8]
+        -r[key_value_size_ratio],
+        --key_value_size_ratio=[key_value_size_ratio]
+                                          [Ratio of key size for each entry; def:
+                                          0.5]
+        -n[num_kv_entries],
+        --num_kv_entries=[num_kv_entries] [Number of kv entries will be
+                                          generated in the sample workload; def:
+                                          20000]
+```
+
+The result will be saved in the file ./sample_workload.stat for later reference in RocksDB.
+To run RocksDB, you need to define the environment variable *SAMPLE_WORKLOAD_STAT_PATH* to be the path to the sample_workload.stat file in your bash profile:
+```bash
+export SAMPLE_WORKLOAD_STAT_PATH="~/path/to/sample_workload.stat"
+```
+
+### Other information
+For the ease of finding information to run the project, here is the summary to run the other components of this project.
+
+RocksDB code is in branch VA_new of github repo: https://github.com/ericpolo/rocksdb_VA . You can also navigate to ./lib/rocksdb which is linked to the aforementioned branch.
+
+To compile RocksDB, use the following command to compile:
+```bash
+cd rocksdb_VA
+make -sj12 release
+```
+This will also compile dbBench, which is located at the home directory of the RocksDB repository.
+
+To run dbBench, use the following command to run the fillRandom workload:
+```bash
+# Database directory is ./myData
+# Initial memtable representation is skip_list
+#   Avaliable options: vector, skip_list, prefix_hash, hash_skiplist
+#     To run a hashed data structure, you also need to specify the key prefix length by the option prefix_size
+#       i.e. add -prefix_size=8 to specify the key prefix length as 8
+# Allow_concurrent_memtable_write to disable concurrent insertion when using skip_list to test raw performance
+# Number of entries = 1,000,000
+# 
+# run ./db_bench -help to see other options
+./db_bench --benchmarks="fillrandom" --db=./myData --memtablerep=skip_list --allow_concurrent_memtable_write=false -num 1000000
+```
+
+The baseline of RocksDB is in the branch baseline of the same GitHub repo. You can navigate to ./lib/rocksdb and check out baseline branch using the following command:
+```
+git checkout baseline
+```
+Compilation of the mini-benchmark will also compile the RocksDB library.
+
+
